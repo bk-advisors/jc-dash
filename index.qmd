@@ -87,10 +87,7 @@ transactions <- df
 
 ```
 
-
-
 # Batch 15 (Closed)
-
 
 ```{r}
 kpis15 <- jc_dashboard_kpis(df,"15",390)
@@ -136,7 +133,6 @@ layout_column_wrap(
 
 ## Per Bird
 
-
 ```{r}
 value_box(
   title = "Cost per Bird",
@@ -154,9 +150,7 @@ value_box(
 
 ```
 
-
 # Batch 16 (Closed)
-
 
 ```{r}
 kpis16 <- jc_dashboard_kpis(df,"16",500)
@@ -202,7 +196,6 @@ layout_column_wrap(
 
 ## Per Bird
 
-
 ```{r}
 value_box(
   title = "Cost per Bird",
@@ -220,14 +213,14 @@ value_box(
 
 ```
 
-
 # Batch Trends and Patterns Analysis
 
-Click link: 
+Click link:
 
 [JC Trends Report](https://mattykuch.github.io/jc-farms/dashboard/trends_jc_farms.html){.external target="_blank"}
 
 # Profit / Loss Statement
+
 ```{r}
 # Read the Excel file
 
@@ -279,7 +272,6 @@ final_pnl |>
 
 
 ```
-
 
 # Data
 
