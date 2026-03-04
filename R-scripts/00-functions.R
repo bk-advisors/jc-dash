@@ -15,10 +15,10 @@ jc_dashboard_kpis <- function(data, batch_num, num_birds) {
     group_by(Batch_Number) %>%
     summarise(Total_Revenue = sum(Amount_UGX, na.rm = TRUE))
   
-  batch_rev <- revenues_by_batch %>% 
-    select(Total_Revenue) %>% 
+  batch_rev <- if (nrow(revenues_by_batch) == 0) 0 else revenues_by_batch %>%
+    select(Total_Revenue) %>%
     pull()
-  
+
   batch_rev_final <- format(batch_rev, big.mark = ",", scientific = FALSE)
   
   
@@ -37,10 +37,10 @@ jc_dashboard_kpis <- function(data, batch_num, num_birds) {
     group_by(Batch_Number) %>%
     summarise(Total_Cost = sum(Amount_UGX, na.rm = TRUE))
   
-  batch_cost <- cost_by_batch %>% 
-    select(Total_Cost) %>% 
+  batch_cost <- if (nrow(cost_by_batch) == 0) 0 else cost_by_batch %>%
+    select(Total_Cost) %>%
     pull()
-  
+
   batch_cost_final <- format(batch_cost, big.mark = ",", scientific = FALSE)
   
   
@@ -51,20 +51,20 @@ jc_dashboard_kpis <- function(data, batch_num, num_birds) {
   net_profit_final <- format(net_profit, big.mark = ",", scientific = FALSE)
   
   
-  # KPI-4 Cost Per Bird
-  
+  # KPI-4 Cost Per Bird & KPI-5 Profit per Bird
+
   total_birds <- num_birds
-  
-  cost_per_bird <- round(batch_cost/total_birds,digits = 0)
-  
-  cost_per_bird_final <- format(cost_per_bird, big.mark = ",", scientific = FALSE)
-  
-  
-  # KPI-5 Profit per Bird
-  
-  profit_per_bird <- round(net_profit/total_birds,digits = 0)
-  
-  profit_per_bird_final <- format(profit_per_bird, big.mark = ",", scientific = FALSE)
+
+  if (total_birds == 0) {
+    cost_per_bird_final <- "N/A"
+    profit_per_bird_final <- "N/A"
+  } else {
+    cost_per_bird <- round(batch_cost / total_birds, digits = 0)
+    cost_per_bird_final <- format(cost_per_bird, big.mark = ",", scientific = FALSE)
+
+    profit_per_bird <- round(net_profit / total_birds, digits = 0)
+    profit_per_bird_final <- format(profit_per_bird, big.mark = ",", scientific = FALSE)
+  }
   
   # Create a list of KPIs
   
@@ -148,8 +148,84 @@ jc_pnl_by_batch <- function(data, batch_num) {
     )
   
   colnames(batch_full)[2] <- paste("Batch",batch_num)
-  
+
   batch_full
-  
-  
+
+
+}
+
+jc_get_bird_count <- function(data, batch_num, status = "closed") {
+  batch_data <- data |> filter(Batch_Number == batch_num)
+  if (status == "closed") {
+    batch_data |>
+      filter(account_type == "revenues") |>
+      summarise(total = sum(quantity, na.rm = TRUE)) |>
+      pull(total)
+  } else {
+    batch_data |>
+      filter(category_cogs == "cogs_chicks_purchased") |>
+      summarise(total = sum(quantity, na.rm = TRUE)) |>
+      pull(total)
+  }
+}
+
+jc_render_batch_kpis <- function(kpis, status = "closed") {
+  if (status == "active") {
+    vbs <- list(
+      value_box(
+        title = "Cost of Production",
+        value = tags$p(kpis[2], style = "font-size: 150%;"),
+        showcase = bsicons::bs_icon("twitter"),
+        theme = "pink"
+      )
+    )
+  } else {
+    vbs <- list(
+      value_box(
+        title = "Revenue",
+        value = tags$p(kpis[1], style = "font-size: 150%;"),
+        showcase = bsicons::bs_icon("bank2"),
+        theme = "primary"
+      ),
+      value_box(
+        title = "Cost of Production",
+        value = tags$p(kpis[2], style = "font-size: 150%;"),
+        showcase = bsicons::bs_icon("twitter"),
+        theme = "pink"
+      ),
+      value_box(
+        title = "Net Profit",
+        value = tags$p(kpis[3], style = "font-size: 150%;"),
+        showcase = bsicons::bs_icon("cash"),
+        theme = "primary"
+      )
+    )
+  }
+  layout_column_wrap(width = "250px", !!!vbs)
+}
+
+jc_render_per_bird_kpis <- function(kpis, status = "closed") {
+  if (status == "active") {
+    value_box(
+      title = "Cost per Bird",
+      value = tags$p(kpis[4], style = "font-size: 150%;"),
+      showcase = bsicons::bs_icon("twitter"),
+      theme = "pink"
+    )
+  } else {
+    tagList(
+      value_box(
+        title = "Cost per Bird",
+        value = tags$p(kpis[4], style = "font-size: 150%;"),
+        showcase = bsicons::bs_icon("twitter"),
+        theme = "pink"
+      ),
+      value_box(
+        title = "Profit per Bird",
+        value = tags$p(kpis[5], style = "font-size: 150%;"),
+        showcase = bsicons::bs_icon("cash"),
+        theme = "primary"
+      )
+    )
+  }
 }

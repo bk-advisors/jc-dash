@@ -65,6 +65,12 @@ asset <- kobo_asset(uid)
 # With the asset you can now read your data
 df_raw <- kobo_data(asset)
 
+# Archive raw data with today's date (flatten list columns from KoboToolbox)
+archive_dir <- "data/archive"
+if (!dir.exists(archive_dir)) dir.create(archive_dir, recursive = TRUE)
+df_archive <- df_raw |> mutate(across(where(is.list), ~sapply(., paste, collapse = "; ")))
+write.csv(df_archive, file.path(archive_dir, paste0("jc_farms_transaction_data_", format(Sys.Date(), "%Y%m%d"), ".csv")), row.names = FALSE)
+
 # -----------------------------------------------------------
 # 2. (Optional) Clean or rename columns for easier reference
 # -----------------------------------------------------------
@@ -85,132 +91,88 @@ transactions <- df
 
 # write.csv(df, "data/jc_farms_transaction_data_20251228.csv",row.names = FALSE)
 
+# -----------------------------------------------------------
+# 3. Compute KPIs for all active batches
+#    To add a new batch: add a row here + a markdown tab below
+# -----------------------------------------------------------
+
+batch_config <- tibble(
+  batch_num = c("15", "16", "17", "18", "19"),
+  status    = c("closed", "closed", "active", "active", "active")
+)
+
+batch_config <- batch_config |>
+  rowwise() |>
+  mutate(num_birds = jc_get_bird_count(df, batch_num, status)) |>
+  ungroup()
+
+all_kpis <- setNames(
+  lapply(seq_len(nrow(batch_config)), function(i) {
+    jc_dashboard_kpis(df, batch_config$batch_num[i], batch_config$num_birds[i])
+  }),
+  paste0("kpis", batch_config$batch_num)
+)
+
 ```
 
 # Batch 15 (Closed)
 
 ```{r}
-kpis15 <- jc_dashboard_kpis(df,"15",390)
-
-#value_box(
- # title = "Cost of Production",
-#  value = tags$p(kpis15[1], style = "font-size: 150%;"),
- # showcase = bsicons::bs_icon("twitter"),
-  #theme = "pink"
-#)
-
-vbs15 <- list(
-value_box(
-  title = "Revenue",
-  value = tags$p(kpis15[1], style = "font-size: 150%;"),
-  showcase = bsicons::bs_icon("bank2"),
-  theme = "primary"
-),
-
-value_box(
-  title = "Cost of Production",
-  value = tags$p(kpis15[2], style = "font-size: 150%;"),
-  showcase = bsicons::bs_icon("twitter"),
-  theme = "pink"
-),
-
-value_box(
-  title = "Net Profit",
-  value = tags$p(kpis15[3], style = "font-size: 150%;"),
-  showcase = bsicons::bs_icon("cash"),
-  theme = "primary"
-)
-)
-
-layout_column_wrap(
-  width = "250px",
-  !!!vbs15
-)
-
-
-
+jc_render_batch_kpis(all_kpis[["kpis15"]])
 ```
 
 ## Per Bird
 
 ```{r}
-value_box(
-  title = "Cost per Bird",
-  value = tags$p(kpis15[4], style = "font-size: 150%;"),
-  showcase = bsicons::bs_icon("twitter"),
-  theme = "pink"
-)
-
-value_box(
-  title = "Profit per Bird",
-  value = tags$p(kpis15[5], style = "font-size: 150%;"),
-  showcase = bsicons::bs_icon("cash"),
-  theme = "primary"
-)
-
+jc_render_per_bird_kpis(all_kpis[["kpis15"]])
 ```
 
 # Batch 16 (Closed)
 
 ```{r}
-kpis16 <- jc_dashboard_kpis(df,"16",500)
-
-#value_box(
- # title = "Cost of Production",
-  #value = tags$p(kpis16[1], style = "font-size: 150%;"),
-  #showcase = bsicons::bs_icon("twitter"),
-  #theme = "pink"
-#)
-
-vbs16 <- list(
-value_box(
-  title = "Revenue",
-  value = tags$p(kpis16[1], style = "font-size: 150%;"),
-  showcase = bsicons::bs_icon("bank2"),
-  theme = "primary"
-),
-
-value_box(
-  title = "Cost of Production",
-  value = tags$p(kpis16[2], style = "font-size: 150%;"),
-  showcase = bsicons::bs_icon("twitter"),
-  theme = "pink"
-),
-
-value_box(
-  title = "Net Profit",
-  value = tags$p(kpis16[3], style = "font-size: 150%;"),
-  showcase = bsicons::bs_icon("cash"),
-  theme = "primary"
-)
-)
-
-layout_column_wrap(
-  width = "250px",
-  !!!vbs16
-)
-
-
-
+jc_render_batch_kpis(all_kpis[["kpis16"]])
 ```
 
 ## Per Bird
 
 ```{r}
-value_box(
-  title = "Cost per Bird",
-  value = tags$p(kpis16[4], style = "font-size: 150%;"),
-  showcase = bsicons::bs_icon("twitter"),
-  theme = "pink"
-)
+jc_render_per_bird_kpis(all_kpis[["kpis16"]])
+```
 
-value_box(
-  title = "Profit per Bird",
-  value = tags$p(kpis16[5], style = "font-size: 150%;"),
-  showcase = bsicons::bs_icon("cash"),
-  theme = "primary"
-)
+# Batch 17 (Active)
 
+```{r}
+jc_render_batch_kpis(all_kpis[["kpis17"]], status = "active")
+```
+
+## Per Bird
+
+```{r}
+jc_render_per_bird_kpis(all_kpis[["kpis17"]], status = "active")
+```
+
+# Batch 18 (Active)
+
+```{r}
+jc_render_batch_kpis(all_kpis[["kpis18"]], status = "active")
+```
+
+## Per Bird
+
+```{r}
+jc_render_per_bird_kpis(all_kpis[["kpis18"]], status = "active")
+```
+
+# Batch 19 (Active)
+
+```{r}
+jc_render_batch_kpis(all_kpis[["kpis19"]], status = "active")
+```
+
+## Per Bird
+
+```{r}
+jc_render_per_bird_kpis(all_kpis[["kpis19"]], status = "active")
 ```
 
 # Batch Trends and Patterns Analysis
@@ -243,19 +205,12 @@ pnl_statement <- pnl_data %>%
   # Select only the relevant columns
   select(Category, "Batch 1", "Batch 2", "Batch 3")
 
-# Get Batch 4, 5 and 6 dataframes 
-
-batch4_full <- jc_pnl_by_batch(df_raw,"4")
-
-batch5_full <- jc_pnl_by_batch(df_raw,"5")
-
-batch6_full <- jc_pnl_by_batch(df_raw,"6")
-
-# Merge with original PnL
-final_pnl <- pnl_statement %>%
-  left_join(batch4_full, by = "Category") |> 
-  left_join(batch5_full, by = "Category") |> 
-  left_join(batch6_full, by = "Category")
+# Get Batch 4-19 P&L dataframes and merge with original PnL
+final_pnl <- pnl_statement
+for (bn in as.character(4:19)) {
+  batch_pnl <- jc_pnl_by_batch(df_raw, bn)
+  final_pnl <- final_pnl |> left_join(batch_pnl, by = "Category")
+}
 
 # Format numbers with commas
 final_pnl <- final_pnl %>%
