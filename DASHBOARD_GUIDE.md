@@ -16,38 +16,52 @@ Each render pulls fresh data from KoboToolbox and saves a backup CSV to `data/ar
 
 ### When you start selling a batch (e.g. Batch 17)
 
-Two changes in `index.qmd`:
+Three changes in `index.qmd`:
 
 **1. Update `batch_config`** (setup chunk, ~line 99):
 
 ```r
-# Change "active" to "closed" for Batch 17
+# Change "active" to "selling" for Batch 17
 batch_config <- tibble(
   batch_num = c("15", "16", "17", "18", "19"),
-  status    = c("closed", "closed", "closed", "active", "active")
-                                    # ^^^^^^^ was "active"
+  status    = c("closed", "closed", "selling", "active", "active")
+                                    # ^^^^^^^^ was "active"
 )
 ```
 
 **2. Update the tab heading** (~line 142):
 
 ```
-# Batch 17 (Closed)
+# Batch 17 (Selling)
 ```
 
-**3. Remove `status = "active"` from the render calls** so it defaults to `"closed"`:
+**3. Update the render calls** to pass `status = "selling"`:
 
 ```r
-# Before:
-jc_render_batch_kpis(all_kpis[["kpis17"]], status = "active")
-jc_render_per_bird_kpis(all_kpis[["kpis17"]], status = "active")
+jc_render_batch_kpis(all_kpis[["kpis17"]], status = "selling")
+jc_render_per_bird_kpis(all_kpis[["kpis17"]], status = "selling")
+```
 
-# After:
+This shows all 5 KPIs (Revenue, Cost, Net Profit, Cost/Bird, Profit/Bird) and uses birds purchased for per-bird calculations (since not all birds are sold yet).
+
+---
+
+### When a batch finishes selling (e.g. Batch 17)
+
+Three changes in `index.qmd`:
+
+**1. Update `batch_config`** — change `"selling"` to `"closed"`.
+
+**2. Update the tab heading** to `# Batch 17 (Closed)`.
+
+**3. Remove `status` from the render calls** so they default to `"closed"`:
+
+```r
 jc_render_batch_kpis(all_kpis[["kpis17"]])
 jc_render_per_bird_kpis(all_kpis[["kpis17"]])
 ```
 
-This switches the batch to show all 5 KPIs (Revenue, Cost, Net Profit, Cost/Bird, Profit/Bird) and uses birds sold for per-bird calculations.
+This switches per-bird calculations to use birds sold instead of birds purchased.
 
 ---
 
@@ -90,16 +104,17 @@ That's it — bird counts and KPIs are computed automatically from the data.
 
 ### Understanding what each status shows
 
-| Metric | Active | Closed |
-|--------|--------|--------|
-| Cost of Production | Shown | Shown |
-| Cost per Bird | Shown | Shown |
-| Revenue | Hidden | Shown |
-| Net Profit | Hidden | Shown |
-| Profit per Bird | Hidden | Shown |
+| Metric | Active | Selling | Closed |
+|--------|--------|---------|--------|
+| Cost of Production | Shown | Shown | Shown |
+| Cost per Bird | Shown | Shown | Shown |
+| Revenue | Hidden | Shown | Shown |
+| Net Profit | Hidden | Shown | Shown |
+| Profit per Bird | Hidden | Shown | Shown |
 
-- **Active** uses birds purchased for per-bird calculations
-- **Closed** uses birds sold for per-bird calculations
+- **Active** — birds are being raised, no sales yet. Uses birds purchased for per-bird calculations.
+- **Selling** — sales have started but not finished. Uses birds purchased for per-bird calculations (more accurate while selling is in progress).
+- **Closed** — all birds sold. Uses birds sold for per-bird calculations.
 
 ---
 

@@ -36,9 +36,9 @@ Sourced by `index.qmd`. Contains:
 
 - `jc_dashboard_kpis(data, batch_num, num_birds)` — returns a 5-element character vector: [Revenue, Cost, Profit, Cost/Bird, Profit/Bird]. Defaults to 0 when no revenue or cost rows exist (prevents empty-vector shifting).
 - `jc_pnl_by_batch(data, batch_num)` — builds a P&L dataframe with category hierarchy (Revenues > COGS > OPEX > Net Profit/Loss). Uses `df_raw` (original column names: `batch`, `amount_manual`).
-- `jc_get_bird_count(data, batch_num, status)` — extracts bird count from data. Closed batches use birds sold (`account_type == "revenues"` quantity); active batches use birds purchased (`category_cogs == "cogs_chicks_purchased"` quantity).
-- `jc_render_batch_kpis(kpis, status)` — renders value boxes. Closed: Revenue + Cost + Net Profit. Active: Cost of Production only.
-- `jc_render_per_bird_kpis(kpis, status)` — renders per-bird value boxes. Closed: Cost/Bird + Profit/Bird. Active: Cost/Bird only.
+- `jc_get_bird_count(data, batch_num, status)` — extracts bird count from data. Closed batches use birds sold (`account_type == "revenues"` quantity); active/selling batches use birds purchased (`category_cogs == "cogs_chicks_purchased"` quantity).
+- `jc_render_batch_kpis(kpis, status)` — renders value boxes. Closed/selling: Revenue + Cost + Net Profit. Active: Cost of Production only.
+- `jc_render_per_bird_kpis(kpis, status)` — renders per-bird value boxes. Closed/selling: Cost/Bird + Profit/Bird. Active: Cost/Bird only.
 
 ### Batch Configuration Pattern (`index.qmd`, setup chunk)
 
@@ -47,11 +47,11 @@ All batches are defined in a single `batch_config` tibble:
 ```r
 batch_config <- tibble(
   batch_num = c("15", "16", "17", "18", "19"),
-  status    = c("closed", "closed", "active", "active", "active")
+  status    = c("closed", "closed", "active", "active", "selling")
 )
 ```
 
-Bird counts and KPIs are computed automatically from this config. To add a new batch or close an existing one, edit this tibble and add/update the corresponding markdown tab below it.
+Bird counts and KPIs are computed automatically from this config. To add a new batch or change its status, edit this tibble and update the corresponding markdown tab below it (heading text and `status` parameter in render calls).
 
 ### Data Pipeline
 
@@ -68,7 +68,7 @@ Each render of `index.qmd` saves a flattened copy of the raw KoboToolbox pull to
 - **Column names differ by context**: `df` uses `Batch_Number`/`Amount_UGX` (renamed); `df_raw` uses `batch`/`amount_manual` (original). Functions document which they expect.
 - **Currency**: UGX (Ugandan Shilling), comma-formatted
 - **Account types**: `"revenues"`, `"cogs"`, `"opex"` — lowercase strings
-- **Batch status**: `"active"` (still raising birds, no sales) or `"closed"` (sold, all metrics available)
+- **Batch status**: `"active"` (still raising birds, no sales), `"selling"` (started selling, uses birds purchased for per-bird metrics), or `"closed"` (finished selling, all metrics available)
 - **Indentation**: 2 spaces
 
 ### Important Gotcha
