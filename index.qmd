@@ -179,7 +179,7 @@ jc_render_per_bird_kpis(all_kpis[["kpis19"]], status = "selling")
 
 Click link:
 
-[JC Trends Report](https://mattykuch.github.io/jc-farms/dashboard/trends_jc_farms.html){.external target="_blank"}
+[JC Trends Report](trends_jc_farms.html){target="_blank"}
 
 # Profit / Loss Statement
 
