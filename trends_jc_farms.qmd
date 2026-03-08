@@ -1,9 +1,13 @@
 ---
-title: "JC Farms — Trends (Batches 4–14)"
-format: html
+title: "JC Farms — Trends (Batches 4–16)"
+format:
+  html:
+    toc: true
+    css: style.css
+  docx:
+    toc: true
+    number-sections: true
 editor: visual
-toc: true
-css: style.css
 ---
 
 ```{r}
@@ -16,16 +20,17 @@ library(ggplot2)
 library(gt)
 
 # Read transaction data
-tx <- readr::read_csv("data/jc_farms_transaction_data_20251228.csv", show_col_types = FALSE) %>%
+tx <- readr::read_csv("data/archive/jc_farms_transaction_data_20260308.csv", show_col_types = FALSE) %>%
   mutate(
-    Batch = as.integer(Batch_Number),
+    Batch = as.integer(batch),
+    Amount_UGX = amount_manual,
     transaction_date = as.Date(transaction_date)
   ) %>%
   select(Batch, Amount_UGX, account_type, category_cogs, quantity, transaction_date)
 
 # Summarize batches 4-14: key financial and operational metrics
 batch_summary <- tx %>%
-  filter(between(Batch, 4, 14)) %>%
+  filter(between(Batch, 4, 16)) %>%
   group_by(Batch) %>%
   summarise(
     birds_purchased = sum(quantity[category_cogs == "cogs_chicks_purchased"], na.rm = TRUE),
@@ -42,8 +47,33 @@ batch_summary <- tx %>%
     profit_margin = if_else(revenue > 0, 100 * profit / revenue, NA_real_),
     cost_per_bird = if_else(birds_sold > 0, cost / birds_sold, NA_real_),
     profit_per_bird = if_else(birds_sold > 0, profit / birds_sold, NA_real_),
-    fcr = if_else(revenue > 0, feed_cost / revenue, NA_real_),
     avg_sale_price = if_else(birds_sold > 0, revenue / birds_sold, NA_real_)
+  )
+
+# Compute holding period: start = first feed purchase (arrival proxy), end = sales
+batch_timeline <- tx %>%
+  filter(between(Batch, 4, 16)) %>%
+  group_by(Batch) %>%
+  summarise(
+    first_feed = min(transaction_date[category_cogs == "cogs_feeds"], na.rm = TRUE),
+    chick_purchase = min(transaction_date[category_cogs == "cogs_chicks_purchased"], na.rm = TRUE),
+    first_sale = min(transaction_date[account_type == "revenues"], na.rm = TRUE),
+    last_sale = max(transaction_date[account_type == "revenues"], na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    batch_start = if_else(is.finite(first_feed), first_feed, chick_purchase),
+    days_to_first_sale = as.numeric(first_sale - batch_start),
+    days_to_last_sale = as.numeric(last_sale - batch_start),
+    weeks_to_first_sale = round(days_to_first_sale / 7, 1),
+    weeks_to_last_sale = round(days_to_last_sale / 7, 1),
+    avg_holding_weeks = round((weeks_to_first_sale + weeks_to_last_sale) / 2, 1)
+  )
+
+batch_summary <- batch_summary %>%
+  left_join(
+    batch_timeline %>% select(Batch, batch_start, weeks_to_first_sale, weeks_to_last_sale, avg_holding_weeks),
+    by = "Batch"
   )
 
 # SPC plot: plot metric with control limits (mean ± 3σ)
@@ -64,9 +94,13 @@ spc_plot <- function(df, metric, ylab, title) {
 
 ```
 
-## Executive Summary (Batches 4–14)
+## Executive Summary (Batches 4–16)
 
-This report analyzes financial and operational performance across 11 production cycles. Our findings identify cost management as the primary profit driver, with margins ranging significantly across batches. The data reveals clear opportunities for operational improvement and cost standardization.
+Looking across our 13 completed batches, we've earned about 7M UGX in total profit — but the journey has been uneven. Our margins have ranged from 24% (Batch 12) down to under 4% (Batch 8), and the story behind those numbers is more nuanced than it first appears.
+
+Batches 11 and 12 were our best — they pioneered a holding strategy where we kept some birds well beyond the standard 6–7 week broiler grow-out period[^1]. The result was bigger birds, higher sale prices, and our strongest margins ever. We've since committed more fully to this approach, holding most birds for two months or more in Batches 15 and 16. This deliberately increases our feed costs — but it also unlocks premium pricing, with Batch 15 selling at 22,000+ UGX per bird.
+
+The key question now is whether we're finding the right balance. Feed costs have climbed from 31% of revenue (Batch 11) to 71% (Batch 16), and while some of that is the expected cost of holding longer, the margin compression suggests we haven't fully optimized the trade-off yet. Most of our batches keep mortality well under control, which is encouraging. The challenge ahead is refining our holding strategy — finding the sweet spot where the extra sale price more than covers the extra feed.
 
 ```{r}
 #| echo: false
@@ -95,12 +129,12 @@ batch_summary %>%
     cost_per_bird = "Cost per Bird (UGX)",
     avg_sale_price = "Avg Sale Price (UGX)"
   ) %>%
-  tab_header(title = "Financial Performance Summary — Batches 4 to 14")
+  tab_header(title = "Financial Performance Summary — Batches 4 to 16")
 ```
 
 ## Bird Production Efficiency
 
-A critical operational metric is bird health and survival through the production cycle. The table below tracks birds at each stage: those purchased at the start of the batch, those sold at harvest, and the implied mortality loss during rearing and production.
+Most of our batches do well here — Batches 5 and 8 lost zero birds, and the majority stay under 4% mortality. But when things go wrong, they go wrong badly. Batch 13 lost 12% of its flock, and Batches 9 and 16 each lost over 7%. Every bird that dies is money we already spent on chicks, feed, and medicine with no return. The table below tells the full story for each batch.
 
 ```{r}
 #| echo: false
@@ -122,30 +156,76 @@ batch_summary %>%
     birds_mortality = "Birds Lost (Mortality)",
     mortality_rate = "Mortality Rate (%)"
   ) %>%
-  tab_header(title = "Bird Production Summary — Batches 4 to 14")
+  tab_header(title = "Bird Production Summary — Batches 4 to 16")
 ```
 
-## Performance Drivers & Operational Insights
+## Holding Period — How Long We Keep Our Birds
 
-Our analysis of Batches 4–14 reveals three critical performance drivers:
+One of the most important shifts in our operation has been how long we hold birds before selling. The standard broiler cycle is about 6–7 weeks[^1] — raise the chicks, sell them as soon as they reach market weight. That's how we ran our earlier batches. But starting with Batches 11 and 12, we experimented with keeping some birds longer, and the results were striking: bigger birds, higher prices, and our best margins ever.
 
-**1. Profit Margin (Profitability)** — The primary indicator of business viability. This metric isolates how much profit remains after all production costs. A margin below 15% signals cost pressures that require intervention. Margins above 20% represent healthy, sustainable operations.
+Since then, we've leaned further into this strategy. Batches 15 and 16 held most birds for two months or more. The trade-off is real — longer holding means more feed cost. After about week 8, feed intake plateaus (birds eat roughly the same amount each week rather than increasing), but the feed conversion ratio worsens — each additional week of feeding adds nearly the same feed cost while producing less weight gain[^2]. The strategy pays off when the higher sale price for bigger birds more than compensates for the accumulated extra feed.
 
-**2. Cost Per Bird (Operational Efficiency)** — A leading indicator of production discipline. Controlling feed quality, chick mortality, disease losses, and operational waste is essential. Volatility in this metric often precedes margin compression and signals process inconsistency.
+The table below shows how long each batch was held (estimated from first feed purchase to first and last sale), alongside the financial outcome. This helps us see whether the longer hold is paying off.
 
-**3. Average Sale Price (Market Positioning)** — Reflects both market conditions and customer mix. Declining prices require offsetting cost reductions; static prices demand efficiency gains. Price stability enables clearer accountability for cost management.
+```{r}
+#| echo: false
+batch_summary %>%
+  select(Batch, avg_holding_weeks, weeks_to_first_sale, weeks_to_last_sale, avg_sale_price, profit_per_bird) %>%
+  gt() %>%
+  fmt_number(
+    columns = c(avg_sale_price, profit_per_bird),
+    decimals = 0
+  ) %>%
+  fmt_number(
+    columns = c(avg_holding_weeks, weeks_to_first_sale, weeks_to_last_sale),
+    decimals = 1
+  ) %>%
+  cols_label(
+    Batch = "Batch",
+    avg_holding_weeks = "Avg Holding (Weeks)",
+    weeks_to_first_sale = "Weeks to First Sale",
+    weeks_to_last_sale = "Weeks to Last Sale",
+    avg_sale_price = "Avg Sale Price (UGX)",
+    profit_per_bird = "Profit/Bird (UGX)"
+  ) %>%
+  tab_header(title = "Holding Period vs. Financial Outcome — Batches 4 to 16")
+```
 
-## Statistical Process Control Charts
+```{r}
+#| echo: false
+ggplot(batch_summary, aes(x = avg_holding_weeks, y = avg_sale_price)) +
+  geom_point(color = "#2E86AB", size = 3) +
+  geom_text(aes(label = Batch), vjust = -0.8, size = 3) +
+  geom_smooth(method = "lm", se = FALSE, color = "#F24236", linewidth = 0.5, linetype = "dashed") +
+  labs(
+    x = "Average Holding Period (Weeks)",
+    y = "Avg Sale Price (UGX)",
+    title = "Holding Period vs. Sale Price"
+  ) +
+  theme_minimal(base_size = 11)
+```
 
-The charts below display each batch's performance against its statistical mean (red solid line) and control limits (dashed red lines at ±3 standard deviations). Points outside the control limits signal exceptional performance or production anomalies warranting investigation. The SPC methodology helps distinguish normal variation from signals that require corrective action.
+## What's Actually Driving Our Results?
+
+When we look across all 13 batches, three things stand out as making or breaking a batch — and they're all connected to how long we hold our birds:
+
+**1. Feed costs are a trade-off we're making deliberately — but we need to watch the ratio.** In Batch 11, feed was 31% of our revenue. By Batch 16, it had climbed to 71%[^7]. Much of that increase is expected: we're holding birds for two months instead of four weeks, so of course we buy more feed. But the question is whether the extra revenue from bigger, more valuable birds is covering that extra cost. In Batch 11, the answer was a clear yes (22.5% margin). In Batch 16, the math is tighter (6.6% margin). We need to track feed cost per bird per week to find where the sweet spot is.
+
+**2. Cost per bird is higher because we hold longer — but the spread is what matters.** Our best batches (11 and 12) ran at about 10,000 UGX per bird[^8]. Batch 16 cost us 23,000 UGX per bird. That looks alarming, but Batch 16 also sold at 24,800 UGX per bird — the highest sale price of any batch. The real metric isn't cost per bird alone; it's the gap between cost and sale price. In Batch 12, that gap was 3,269 UGX/bird. In Batch 16, it was only 1,627 UGX/bird. We're spending more but not earning proportionally more.
+
+**3. Holding longer enables premium pricing — and that's our competitive advantage.** Batch 8 made only 3.7% margin despite zero bird losses — the problem was selling at standard prices (13,720 UGX/bird) after a shorter hold. Compare that to Batch 15, which held birds longer, sold at 22,000+ UGX/bird, and earned the highest profit per bird of any batch. The holding strategy works, but only when paired with the right buyers and selling discipline.
+
+## How to Read These Charts
+
+Each chart below shows one metric across all our batches. The solid red line is our average, and the dashed red lines mark the range of "normal" variation. If a batch falls inside the dashed lines, it's performing within the expected range — nothing unusual. If a batch lands outside those lines, something genuinely different happened that batch, good or bad, and it's worth understanding why.
 
 ```{r}
 #| echo: false
 p1 <- spc_plot(batch_summary, "profit_margin", "Profit Margin (%)", "SPC — Profit Margin per Batch")
 p2 <- spc_plot(batch_summary, "cost_per_bird", "Cost per Bird (UGX)", "SPC — Cost Per Bird")
-p3 <- spc_plot(batch_summary, "fcr", "FCR", "SPC — Feed Conversion Ratio (FCR)")
-p4 <- spc_plot(batch_summary, "avg_sale_price", "Avg Sale Price (UGX)", "SPC — Average Sale Price")
-p5 <- spc_plot(batch_summary, "mortality_rate", "Mortality Rate (%)", "SPC — Bird Mortality Rate")
+p3 <- spc_plot(batch_summary, "avg_sale_price", "Avg Sale Price (UGX)", "SPC — Average Sale Price")
+p4 <- spc_plot(batch_summary, "mortality_rate", "Mortality Rate (%)", "SPC — Bird Mortality Rate")
+p5 <- spc_plot(batch_summary, "avg_holding_weeks", "Weeks", "SPC — Average Holding Period")
 
 print(p1)
 print(p2)
@@ -154,55 +234,111 @@ print(p4)
 print(p5)
 ```
 
-## Bird Mortality: A Hidden Profit Killer
+## Bird Mortality: When We Lose Birds, We Lose Twice
 
-The mortality SPC chart above reveals bird survival performance across batches. Each percentage point of mortality loss directly impacts profit through lost revenue (fewer birds to sell) and wasted investment (paid for birds that die). Industry benchmarks for broiler operations typically target 2–4% mortality; higher rates indicate biosecurity lapses, disease, or operational stress.
+Every bird that dies costs us twice — we've already paid for the chick, the feed, and the medicine up to that point, and we get zero revenue back. Our average mortality across all batches is around 3%, which is within the global commercial target of 2–4%. For a small-scale East African operation like ours, consistently staying below 5% is actually excellent performance[^3]. So overall, we're doing well. But the averages hide some painful batches.
 
-**Key Observations:** - High mortality batches appear as elevated points above the control limit - Consistent mortality signals predictable (though preventable) losses - Spikes beyond the mean + 3σ threshold warrant immediate investigation
+**Batch 13 is the one that should keep us up at night.** We lost 48 out of 400 birds — a 12% mortality rate, three to four times our normal level. That's roughly 48 birds × 13,000 UGX average sale price = over 600,000 UGX in lost revenue from that single batch, on top of the feed and medicine we'd already spent on those birds. We need to understand what went wrong — was it disease, water, ventilation, feed quality? Until we know, it could happen again.
 
-**Financial Impact Analysis:** Assuming 300 birds purchased per batch and 13,000 UGX average sale price: - Each 1% increase in mortality reduces net revenue by \~39,000 UGX per batch - A batch with 10% mortality vs. 4% target loses \~234,000 UGX in direct revenue (6% × 300 × 13,000) - Over 11 batches, preventing preventable mortality could generate +2.6M UGX in additional revenue
+**Batches 9 and 16 also had elevated losses** at 7–8%, while Batches 5, 8, and 12 proved that near-zero mortality is absolutely achievable. The difference between our best and worst batches on mortality alone is worth hundreds of thousands of shillings per cycle.
 
-## Key Findings & Recommended Actions
+## What the Data Is Telling Us
 
-### 1. Profit Margin Trajectory
+### 1. The holding period trade-off — are we finding the sweet spot?
 
--   **Finding:** Margins reveal batch-to-batch variability that correlates strongly with cost management discipline.
--   **Implication:** Unlike market-driven businesses, JC Farms controls \~85% of its margin through operational execution.
--   **Action:** Establish a **monthly margin target of 20%+**. Investigate immediately any batch falling below 15%. Root-cause analysis should focus on feed costs, chick sourcing quality, and bird mortality during rearing.
+The shift to longer holding periods is a smart strategy. Bigger birds command higher prices, and research suggests that profitability per bird peaks at around 7 weeks (49 days)[^4]. Beyond that, feed conversion worsens — birds eat nearly the same amount but gain less weight[^2] — so the economics of each additional week depend on whether we can sell at a premium that covers the extra feed. Batches 11 and 12 proved this can work beautifully — they held some birds longer, earned premium prices, and kept feed costs at just 31–39% of revenue.
 
-### 2. Cost Per Bird — The Primary Profit Lever
+But the data suggests we haven't fully dialed in the trade-off for our recent full-flock long holds. In Batch 16, feed consumed 71% of revenue. Even accounting for the longer holding period, that's a lot. Some questions worth tracking:
 
--   **Finding:** Cost per bird shows the widest variance across batches, indicating inconsistent procurement or operational standards.
--   **Implication:** A 10% reduction in cost per bird translates directly to \~5–7% margin improvement, assuming stable pricing. This is the fastest path to profitability.
--   **Action:** Benchmark top performers (lowest-cost batches) and standardize their procurement and logistics practices across all batches. Consider volume consolidation with feed suppliers and explore alternative feed formulations.
+-   How many kilograms of feed per bird per week are we actually using? Is it plateauing after week 8 like research suggests[^2]?
+-   Are we losing feed to spoilage, spillage, or poor storage — especially over longer holding periods?
+-   Have feed prices themselves gone up from our suppliers? Holding longer amplifies any price increase.
 
-### 3. Sale Price Stability
+**What to do:** For the next batch, record feed in kilograms per bird per week. This one number will tell us whether the feed ratio is high because of the holding period (expected) or because of waste and pricing (fixable).
 
--   **Finding:** Price variation reflects market conditions and customer mix. Stable pricing enables clearer cost accountability.
--   **Implication:** Where price variation is high (\>10% month-to-month), operational teams may prioritize cost cutting over quality, leading to hidden losses in bird health and mortality.
--   **Action:** Implement a simple pricing framework pegged to market conditions + 5–10% margin buffer. This removes uncertainty and clarifies profit accountability to the operations team.
+### 2. The Batch 11–12 model — partial holding may be the winning formula
 
-### 4. Bird Mortality Rate — The Hidden Efficiency Loss
+These two batches achieved 22–24% profit margins, and a key reason is that they didn't hold *all* birds for the full extended period. They sold some birds at the standard 6–7 week mark and kept others longer. This blended approach — known in the industry as "thinning" or partial depopulation[^5] — has a real advantage: the early sales generate cash to cover ongoing feed costs, while the longer-held birds earn the premium prices.
 
--   **Finding:** Mortality rates vary significantly batch-to-batch, indicating inconsistent biosecurity and bird health management.
--   **Implication:** Each percentage point above the 4% target translates to 39,000–52,000 UGX lost revenue per batch. High mortality batches often correlate with higher costs per bird and lower margins.
--   **Action:**
-    -   **Immediate:** Establish daily bird health monitoring logs. Record mortality by day, cause (disease, culling, unknown), and location within facility.
-    -   **Week 1:** Review top 3 highest-mortality batches. Interview farm staff about feeding protocols, water access, ventilation, and disease signs.
-    -   **Week 2:** Implement low-cost biosecurity improvements: dedicated footwear per section, water chlorination, improved ventilation.
-    -   **Ongoing:** Target mortality rate ≤4%. Any batch exceeding 5% triggers a root-cause investigation before the next cycle.
+Compare this to Batches 15 and 16, where we held most of the flock for two months or more. The margins were much thinner (6–11%) even though the sale prices were higher. Holding the entire flock longer means *all* the feed costs stack up before *any* revenue comes in.
 
-## Recommended Path Forward
+**What to do:** For the next batch, consider splitting the flock. Sell 40–50% of the birds at the normal 6–7 week mark to recover costs, and hold the remaining 50–60% for 8+ weeks to earn the premium. This mirrors what worked in Batches 11 and 12.
 
-**Immediate (Week 1-2):** - Establish a weekly performance dashboard tracking margin, cost per bird, sale price, and mortality rate vs. targets - Set clear targets: Margin ≥20%, Cost/Bird ≤X, Price ≥Y, Mortality ≤4% - Assign one team member to daily health monitoring and recording
+### 3. Scaling and holding are both pushing costs up — we need to separate the effects
 
-**Short-term (Week 2-4):** - Conduct a detailed cost audit of the 3 batches with highest cost per bird - Investigate the 3 batches with highest mortality rates; document findings - Identify and eliminate process gaps through side-by-side comparison - Review biosecurity practices vs. industry standards (temperature, humidity, stocking density, disease protocols)
+Our cost per bird went from ~10,000 UGX (Batches 11–12, 300–350 birds, partial long hold) to ~23,000 UGX (Batch 16, 464 birds, full long hold). That's a big jump, and it's driven by two things at once: larger flocks *and* longer holding periods. We need to figure out how much of the cost increase is from each.
 
-**Medium-term (Month 2-3):** - Pilot standardized procurement, feeding, and bird health protocols in one batch - Measure outcomes (mortality rate, cost per bird, profit margin) vs. control batch - Document and scale successful practices - Conduct staff training on early disease detection and response
+If most of the increase is from holding longer, that's expected and potentially fine — as long as the sale price covers it. If a significant portion is from scaling inefficiency (more waste, more labor, worse feed conversion at higher bird counts), then we have an operational issue to fix.
 
-**Ongoing:** - Monitor SPC charts weekly when new batch data becomes available - Escalate any batch with margin \< 10%, cost/bird \> previous period average, or mortality \> 5% - Review correlation between cost discipline and bird health metrics monthly - Share performance wins and lessons learned across the operations team
+**What to do:** The next time we run a batch of 300–350 birds with a full long hold, compare the cost per bird to Batch 16. If it's significantly lower, the scale is the problem. If it's similar, the holding period is the main driver and we should focus on optimizing feed efficiency during the hold.
+
+### 4. Mortality spikes are preventable — and more costly when we hold longer
+
+Our average mortality (about 3%) is fine. The problem is the spikes — Batch 13 lost 12% of its birds, and Batches 9 and 16 each lost 7–8%. Meanwhile, Batches 5, 8, and 12 achieved near-zero losses, so we know the farm can do it.
+
+Mortality becomes even more expensive with our holding strategy. A bird that dies at week 8 has consumed far more feed than one that dies at week 2. Every bird lost late in a long hold represents a bigger investment gone to waste.
+
+**What to do:**
+
+-   **Start a daily mortality log[^6].** Every morning, count and record how many birds died overnight and note any symptoms — droopy, not eating, diarrhea, respiratory issues.
+-   **If we lose more than 2 birds in a single day, treat it as an alert.** Check water, feed freshness, ventilation, and temperature immediately. Industry guidelines recommend investigating any day where mortality exceeds 0.1% of the flock.
+-   **Pay special attention during weeks 6–10.** If mortality is creeping up during the extended hold, it may make sense to sell the remaining birds earlier rather than lose more.
+-   **Batch 13 needs a post-mortem.** If we haven't documented what happened, let's at least write down what the team remembers.
+
+### 5. Premium pricing is the payoff — and it requires selling discipline
+
+The whole point of holding longer is to sell at a higher price. Batch 15 proved this works spectacularly — 22,000+ UGX per bird, the highest profit per bird of any batch. But Batch 8 shows what happens when we don't sell well: zero birds lost, reasonable costs, but only 3.7% margin because we sold at standard prices after a shorter hold.
+
+The holding strategy only works if we have buyers who will pay for bigger, older birds. If we end up selling long-held birds at the same price we'd get at week 5, we've just spent extra weeks of feed for nothing.
+
+**What to do:**
+
+-   Build and maintain a buyer list with the prices we've gotten from each.
+-   Before starting a long hold, confirm we have buyers lined up who will pay the premium.
+-   Track which buyers paid the highest prices in Batch 15 and prioritize those relationships.
+-   If we can't find premium buyers partway through a long hold, consider selling some birds at market price to cut feed costs rather than holding the entire flock and hoping.
+
+## What We Should Do Next
+
+**This week:**
+
+-   Start the daily mortality log — a simple notebook at the farm is enough
+-   Weigh feed before distributing and record how many kilograms go out each day, per batch
+-   Write down everything we remember about how we ran Batches 11 and 12 — especially the split between early-sold and long-held birds
+
+**This month:**
+
+-   Compare our current feed supplier prices to at least two alternatives
+-   Contact the buyer(s) from Batch 15 about future sales at premium prices
+-   Plan the next batch around the split-flock model: sell some at 6–7 weeks, hold the rest for 10+ weeks
+-   Set targets: mortality under 4%, feed cost per bird per week tracked and compared to Batch 11–12 levels
+
+**Going forward:**
+
+-   Review this report together after each batch closes — look at holding period alongside margin to understand the trade-off
+-   Track feed cost per bird per week as our core efficiency metric — it accounts for holding period and lets us compare batches fairly
+-   If mortality exceeds 5% during an extended hold, consider selling the remaining birds early rather than risking further losses
+-   Experiment: run one batch at 300–350 birds with the split-hold model and compare results to recent larger batches
 
 ------------------------------------------------------------------------
 
-*Report Generated:* December 29, 2025 — JC Farms Financial & Operational Analytics\
-*Methodology:* Shewhart SPC with ±3σ control limits \| *Data Period:* Batches 4–14
+[^1]: The standard commercial broiler grow-out period is 42–49 days (6–7 weeks). In Uganda, birds are typically raised for 5–8 weeks depending on target market weight. Sources: [The Poultry Site](https://www.thepoultrysite.com/articles/broilers-grow-out); [Aaron Vet Farms](https://aaronvetfarms.com/how-much-feed-does-a-broiler-eat-in-6-weeks/).
+
+[^2]: Broiler feed intake does not decrease after week 8 — it plateaus. However, the feed conversion ratio worsens significantly: birds consume nearly as much feed as the prior week but gain substantially less weight, making each additional week of feeding progressively less cost-effective. Sources: [Jahan Kaveh Broiler Feed Guide](https://www.jahankaveh.com/en/broiler-feed-consumption-guide/); [Veterinaria Digital](https://www.veterinariadigital.com/en/articulos/feed-conversion-in-broilers-what-does-it-consist-of-and-how-to-make-it-efficient/).
+
+[^3]: The 2–4% mortality target is the global commercial benchmark. For small-scale East African operations, 5–8% is a more realistic near-term target — achieving consistently below 5% represents excellent performance relative to regional peers. A Zambia study found backyard broiler farmers averaged 7.6% mortality. Sources: [Champrix](https://www.champrix.com/articles/mortality-in-broilers-and-laying-hens); [Frontiers in Sustainable Food Systems (2025)](https://www.frontiersin.org/journals/sustainable-food-systems/articles/10.3389/fsufs.2025.1446060/full).
+
+[^4]: Research suggests profitability per bird peaks at approximately 49 days (7 weeks). Beyond this, diminishing returns set in due to worsening feed conversion. However, in markets where birds are sold live per-piece rather than by weight, larger birds command premiums that can offset the efficiency loss. Sources: [Mansoura Vet Medical Journal](https://mvmj.researchcommons.org/cgi/viewcontent.cgi?article=1230&context=home); [ScienceDirect](https://www.sciencedirect.com/science/article/pii/S0003909825016376).
+
+[^5]: Partial depopulation ("thinning") is standard commercial practice. A 2022 study found that stopping thinning would reduce profit per production cycle by 31%. The remaining birds benefit from more space, better air quality, and improved growth rates. Sources: [MDPI Animals (2022)](https://www.mdpi.com/2076-2615/12/12/1521); [Poultry World](https://www.poultryworld.net/poultry/broilers/economic-consequences-of-stopping-thinning-in-broiler-production/).
+
+[^6]: Daily mortality recording is universally recommended by the FAO, commercial integrators, and animal welfare bodies. Recommended thresholds: first week mortality should not exceed 0.5% per day; after the first week, daily mortality above 0.1% warrants attention and above 0.5% requires immediate investigation. Sources: [FAO Poultry Disease Manual](https://www.fao.org/4/al875e/al875e00.pdf); [Champrix](https://www.champrix.com/articles/mortality-in-broilers-and-laying-hens).
+
+[^7]: Feed typically represents 60–70% of total broiler production cost globally. As a percentage of revenue, a healthy target is 50–55%; above 60% signals that feed efficiency or pricing needs investigation. Sources: [MDPI Agriculture (2023)](https://www.mdpi.com/2077-0472/15/2/139); [Aaron Vet Farms](https://aaronvetfarms.com/broiler-vs-layer-farming-in-uganda-which-one-is-right-for-you/).
+
+[^8]: The average cost of raising a single broiler in Uganda is approximately UGX 9,681 for a standard 6-week cycle. JC Farms' best batches (11 and 12) at ~10,000 UGX per bird are right at this benchmark, while longer-held batches naturally cost more. Source: [Aaron Vet Farms (2025)](https://aaronvetfarms.com/broiler-vs-layer-farming-in-uganda-which-one-is-right-for-you/).
+
+------------------------------------------------------------------------
+
+*Report Generated:* March 8, 2026 — JC Farms Financial & Operational Analytics\
+*Methodology:* Shewhart SPC with ±3σ control limits \| *Data Period:* Batches 4–16
