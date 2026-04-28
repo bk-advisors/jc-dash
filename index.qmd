@@ -98,7 +98,7 @@ transactions <- df
 
 batch_config <- tibble(
   batch_num = c("15", "16", "17", "18", "19"),
-  status    = c("closed", "closed", "active", "active", "closed")
+  status    = c("closed", "closed", "selling", "selling", "closed")
 )
 
 batch_config <- batch_config |>
@@ -139,28 +139,28 @@ jc_render_batch_kpis(all_kpis[["kpis16"]])
 jc_render_per_bird_kpis(all_kpis[["kpis16"]])
 ```
 
-# Batch 17 (Active)
+# Batch 17 (Selling)
 
 ```{r}
-jc_render_batch_kpis(all_kpis[["kpis17"]], status = "active")
+jc_render_batch_kpis(all_kpis[["kpis17"]], status = "selling")
 ```
 
 ## Per Bird
 
 ```{r}
-jc_render_per_bird_kpis(all_kpis[["kpis17"]], status = "active")
+jc_render_per_bird_kpis(all_kpis[["kpis17"]], status = "selling")
 ```
 
-# Batch 18 (Active)
+# Batch 18 (Selling)
 
 ```{r}
-jc_render_batch_kpis(all_kpis[["kpis18"]], status = "active")
+jc_render_batch_kpis(all_kpis[["kpis18"]], status = "selling")
 ```
 
 ## Per Bird
 
 ```{r}
-jc_render_per_bird_kpis(all_kpis[["kpis18"]], status = "active")
+jc_render_per_bird_kpis(all_kpis[["kpis18"]], status = "selling")
 ```
 
 # Batch 19 (Closed)
